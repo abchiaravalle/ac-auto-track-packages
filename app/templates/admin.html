@@ -1,0 +1,196 @@
+{% extends "base.html" %}
+
+{% block title %}Admin Panel - Gmail Package Tracker{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1><i class="fas fa-cogs"></i> Admin Panel</h1>
+    <button class="btn btn-success" onclick="processAllEmails()">
+        <i class="fas fa-sync-alt"></i> Process All Users
+    </button>
+</div>
+
+<!-- System Status -->
+<div class="row mb-4">
+    <div class="col-md-4">
+        <div class="card bg-info text-white">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <i class="fas fa-users fa-2x me-3"></i>
+                    <div>
+                        <h5 class="card-title">Total Users</h5>
+                        <h3>{{ users|length }}</h3>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card bg-success text-white">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <i class="fas fa-check-circle fa-2x me-3"></i>
+                    <div>
+                        <h5 class="card-title">Active Users</h5>
+                        <h3>{{ users|selectattr("is_active", "equalto", true)|list|length }}</h3>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card {% if scheduler_status.running %}bg-success{% else %}bg-danger{% endif %} text-white">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <i class="fas fa-clock fa-2x me-3"></i>
+                    <div>
+                        <h5 class="card-title">Scheduler</h5>
+                        <h3>{% if scheduler_status.running %}Running{% else %}Stopped{% endif %}</h3>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Scheduler Status -->
+<div class="card mb-4">
+    <div class="card-header">
+        <h5><i class="fas fa-clock"></i> Scheduler Status</h5>
+    </div>
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-6">
+                <p><strong>Status:</strong> 
+                    <span class="badge {% if scheduler_status.running %}bg-success{% else %}bg-danger{% endif %}">
+                        {% if scheduler_status.running %}Running{% else %}Stopped{% endif %}
+                    </span>
+                </p>
+                <p><strong>Check Interval:</strong> {{ scheduler_status.check_interval_minutes }} minutes</p>
+            </div>
+            <div class="col-md-6">
+                {% if scheduler_status.jobs %}
+                <p><strong>Next Scheduled Run:</strong></p>
+                {% for job in scheduler_status.jobs %}
+                <p class="small">{{ job.name }}: {{ job.next_run or 'Not scheduled' }}</p>
+                {% endfor %}
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- User Management -->
+<div class="card">
+    <div class="card-header">
+        <h5><i class="fas fa-users"></i> User Management</h5>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-striped">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Email</th>
+                        <th>Status</th>
+                        <th>Admin</th>
+                        <th>Last Login</th>
+                        <th>Last Email Check</th>
+                        <th>Created</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for user in users %}
+                    <tr>
+                        <td>{{ user.name }}</td>
+                        <td>{{ user.email }}</td>
+                        <td>
+                            <span class="badge {% if user.is_active %}bg-success{% else %}bg-danger{% endif %}">
+                                {% if user.is_active %}Active{% else %}Inactive{% endif %}
+                            </span>
+                        </td>
+                        <td>
+                            {% if user.is_admin %}
+                            <span class="badge bg-warning"><i class="fas fa-crown"></i> Admin</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if user.last_login %}
+                            {{ user.last_login.strftime('%m/%d/%Y %H:%M') }}
+                            {% else %}
+                            <span class="text-muted">Never</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if user.last_email_check %}
+                            {{ user.last_email_check.strftime('%m/%d/%Y %H:%M') }}
+                            {% else %}
+                            <span class="text-muted">Never</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ user.created_at.strftime('%m/%d/%Y') }}</td>
+                        <td>
+                            <button class="btn btn-sm btn-outline-warning" onclick="toggleUserActive({{ user.id }}, {{ user.is_active|lower }})">
+                                {% if user.is_active %}Deactivate{% else %}Activate{% endif %}
+                            </button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Processing Modal -->
+<div class="modal fade" id="processingModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-body text-center py-4">
+                <div class="spinner-border text-primary mb-3" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <h5>Processing all users...</h5>
+                <p class="text-muted">This may take several minutes</p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function processAllEmails() {
+    const modal = new bootstrap.Modal(document.getElementById('processingModal'));
+    modal.show();
+    
+    fetch('/admin/api/process-all-emails', { method: 'POST' })
+        .then(response => response.json())
+        .then(data => {
+            setTimeout(() => {
+                modal.hide();
+                location.reload();
+            }, 5000);
+        })
+        .catch(error => {
+            modal.hide();
+            alert('Error processing emails: ' + error);
+        });
+}
+
+function toggleUserActive(userId, isActive) {
+    const action = isActive ? 'deactivate' : 'activate';
+    if (confirm(`Are you sure you want to ${action} this user?`)) {
+        fetch(`/admin/api/users/${userId}/toggle-active`, { method: 'POST' })
+            .then(response => response.json())
+            .then(data => {
+                location.reload();
+            })
+            .catch(error => {
+                alert('Error updating user: ' + error);
+            });
+    }
+}
+</script>
+{% endblock %}

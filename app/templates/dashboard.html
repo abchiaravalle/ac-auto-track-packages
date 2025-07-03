@@ -1,0 +1,191 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - Gmail Package Tracker{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1><i class="fas fa-tachometer-alt"></i> Dashboard</h1>
+    <button class="btn btn-primary" onclick="processEmails()">
+        <i class="fas fa-sync-alt"></i> Check for New Packages
+    </button>
+</div>
+
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="card bg-primary text-white">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <i class="fas fa-box fa-2x me-3"></i>
+                    <div>
+                        <h5 class="card-title">Total Packages</h5>
+                        <h3>{{ package_count }}</h3>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-success text-white">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <i class="fas fa-check-circle fa-2x me-3"></i>
+                    <div>
+                        <h5 class="card-title">Delivered</h5>
+                        <h3>{{ packages|selectattr("status", "equalto", "delivered")|list|length }}</h3>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-info text-white">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <i class="fas fa-truck fa-2x me-3"></i>
+                    <div>
+                        <h5 class="card-title">In Transit</h5>
+                        <h3>{{ packages|selectattr("status", "equalto", "in_transit")|list|length }}</h3>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-warning text-white">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <i class="fas fa-clock fa-2x me-3"></i>
+                    <div>
+                        <h5 class="card-title">Pending</h5>
+                        <h3>{{ packages|selectattr("status", "equalto", "pending")|list|length }}</h3>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h5><i class="fas fa-list"></i> Your Packages</h5>
+    </div>
+    <div class="card-body">
+        {% if packages %}
+        <div class="row">
+            {% for package in packages %}
+            <div class="col-md-6 col-lg-4 mb-3">
+                <div class="card package-card h-100">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-start mb-2">
+                            <h6 class="card-title">{{ package.package_name }}</h6>
+                            <span class="badge status-badge 
+                                {% if package.status == 'delivered' %}bg-success
+                                {% elif package.status == 'in_transit' %}bg-info
+                                {% elif package.status == 'shipped' %}bg-primary
+                                {% else %}bg-warning{% endif %}">
+                                {{ package.status|title }}
+                            </span>
+                        </div>
+                        
+                        {% if package.tracking_number %}
+                        <p class="text-muted small mb-1">
+                            <i class="fas fa-barcode"></i> {{ package.tracking_number }}
+                        </p>
+                        {% endif %}
+                        
+                        {% if package.carrier %}
+                        <p class="text-muted small mb-1">
+                            <i class="fas fa-shipping-fast"></i> {{ package.carrier }}
+                        </p>
+                        {% endif %}
+                        
+                        {% if package.description %}
+                        <p class="small mb-2">{{ package.description[:100] }}{% if package.description|length > 100 %}...{% endif %}</p>
+                        {% endif %}
+                        
+                        <div class="d-flex justify-content-between align-items-center">
+                            <small class="text-muted">
+                                {{ package.source_date.strftime('%m/%d/%Y') }}
+                            </small>
+                            <div>
+                                <span class="badge confidence-badge bg-secondary">
+                                    {{ package.ai_confidence }}% confidence
+                                </span>
+                                <button class="btn btn-sm btn-outline-danger ms-1" onclick="deletePackage({{ package.id }})">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </div>
+                        </div>
+                        
+                        {% if package.estimated_delivery %}
+                        <div class="mt-2">
+                            <small class="text-info">
+                                <i class="fas fa-calendar"></i> Est. delivery: {{ package.estimated_delivery.strftime('%m/%d/%Y') }}
+                            </small>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="text-center py-5">
+            <i class="fas fa-box-open fa-3x text-muted mb-3"></i>
+            <h4 class="text-muted">No packages found yet</h4>
+            <p class="text-muted">Click "Check for New Packages" to scan your Gmail for package tracking emails.</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Processing Modal -->
+<div class="modal fade" id="processingModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-body text-center py-4">
+                <div class="spinner-border text-primary mb-3" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <h5>Processing emails...</h5>
+                <p class="text-muted">This may take a few moments</p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function processEmails() {
+    const modal = new bootstrap.Modal(document.getElementById('processingModal'));
+    modal.show();
+    
+    fetch('/api/process-emails', { method: 'POST' })
+        .then(response => response.json())
+        .then(data => {
+            setTimeout(() => {
+                modal.hide();
+                location.reload();
+            }, 3000);
+        })
+        .catch(error => {
+            modal.hide();
+            alert('Error processing emails: ' + error);
+        });
+}
+
+function deletePackage(packageId) {
+    if (confirm('Are you sure you want to delete this package?')) {
+        fetch(`/api/packages/${packageId}`, { method: 'DELETE' })
+            .then(response => response.json())
+            .then(data => {
+                location.reload();
+            })
+            .catch(error => {
+                alert('Error deleting package: ' + error);
+            });
+    }
+}
+</script>
+{% endblock %}
